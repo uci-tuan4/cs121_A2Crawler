@@ -70,6 +70,18 @@ def is_valid(url):
         if not any(parsed.netloc.endswith(domain) for domain in allowed_domains):
             return False
 
+        # Check for infinite traps in query parameters (e.g., session IDs, calendars)
+        trap_patterns = [
+            r'(.+/)+.*(\1)+.*',  # Repeated directories
+            r'(\?|\&)(.+)\=(.+)\&\2\=\3',  # Repeated query parameters
+            r'.*calendar.*',  # URLs containing 'calendar'
+            r'.*?\d{4}/\d{2}/\d{2}.*',  # URLs with dates
+        ]
+
+        for pattern in trap_patterns:
+            if re.search(pattern, url):
+                return False
+
         # Exclude URLs with disallowed file extensions
         if re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
