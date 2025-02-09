@@ -25,6 +25,11 @@ def extract_next_links(url, resp):
         # Parse the page content using BeautifulSoup
         soup = BeautifulSoup(resp.raw_response.content, 'html.parser')
 
+        '''
+        if not has_high_text_content(soup):
+            return links
+        '''
+
         # Extract all anchor tags with href attributes
         for a_tag in soup.find_all('a', href=True):
             href = a_tag['href']
@@ -38,12 +43,21 @@ def extract_next_links(url, resp):
 
     return links
 
+
+def has_high_text_content(soup):
+    texts = soup.get_text()
+    words = texts.split()
+    num_words = len(words)
+    MIN_WORDS = 200  # Adjust this threshold as needed
+    return num_words >= MIN_WORDS
+
+
 def is_valid(url):
     # Decide whether to crawl this url or not
     try:
         parsed = urlparse(url)
 
-        if parsed.scheme not in set(["http", "https"]):
+        if parsed.scheme not in {"http", "https"}:
             return False
 
         allowed_domains = (
