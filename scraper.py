@@ -1,5 +1,5 @@
 import re
-import PartA as A
+import hashlib
 from urllib.parse import urlparse, urljoin, urldefrag
 from bs4 import BeautifulSoup
 
@@ -9,13 +9,25 @@ longest_page_url = ""
 word_frequencies = {}
 subdomain_counts = {}
 
+visited_simhashes = []
+
 with open('stop_words.txt', 'r') as f:
     stop_words = set(f.read().split())
 
 
 def scraper(url, resp):
     final_url = resp.url
-    unique_urls.add(final_url)
+    final_url, _ = urldefrag(final_url)
+
+    if final_url not in unique_urls:
+        unique_urls.add(final_url)
+
+        # If the URL is in 'ics.uci.edu' domain, update subdomain counts
+        parsed = urlparse(final_url)
+        if 'ics.uci.edu' in parsed.netloc:
+            subdomain = parsed.netloc.lower()
+            subdomain_counts[subdomain] = subdomain_counts.get(subdomain, 0) + 1
+
     links = extract_next_links(final_url, resp)
     return [link for link in links if is_valid(link)]
 
@@ -26,14 +38,15 @@ def extract_next_links(url, resp):
     # Return a list with the hyperlinks (as strings) scraped from resp.raw_response.content
     links = []
 
-    # Check if the response status is OK
-    if resp.status != 200:
-        return links
-
+    '''
     content_length = resp.raw_response.headers.get('Content-Length')
     MAX_CONTENT_LENGTH = 1024 * 1024 * 2  # 2 MB limit
 
     if content_length and int(content_length) < MAX_CONTENT_LENGTH:
+        return links
+    '''
+
+    if not resp.raw_response or resp.status != 200:
         return links
 
     # Check if the content type is HTML
@@ -44,11 +57,16 @@ def extract_next_links(url, resp):
     try:
         # Parse the page content using BeautifulSoup
         soup = BeautifulSoup(resp.raw_response.content, 'html.parser')
+
+        if is_similar_content(soup):
+            return links  # Skip near-duplicate pages
+
         texts = soup.get_text()
         tokens = tokenize_text(texts)
 
         # Update the max word count and URL if necessary
         word_count = len(tokens)
+        print(word_count)
         if word_count > max_word_count:
             max_word_count = word_count
             longest_page_url = url
@@ -67,6 +85,7 @@ def extract_next_links(url, resp):
             links.append(href)
     except Exception as e:
         print(f"Error processing {url}: {e}")
+        return links
 
     return links
 
@@ -97,6 +116,10 @@ def is_valid(url):
         if not any(parsed.netloc.endswith(domain) for domain in allowed_domains):
             return False
 
+        # Skips individual commits in gitlab.ics.uci.edu
+        if '/commit/' in parsed.path or '/commits/' in parsed.path or '/tree/' in parsed.path:
+            return False
+
         # Check for infinite traps in query parameters (e.g., session IDs, calendars)
         trap_patterns = [
             r'(.+/)+.*(\1)+.*',  # Repeated directories
@@ -112,7 +135,7 @@ def is_valid(url):
         # Exclude URLs with disallowed file extensions
         if re.match(
                 r".*\.(css|js|bmp|gif|jpe?g|ico"
-                r"|png|tiff?|mid|mp2|mp3|mp4"
+                r"|png|tiff?|mid|mp2|mp3|mp4|apk|war|img|sql"
                 r"|wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf"
                 r"|ps|eps|tex|ppt|pptx|doc|docx|xls|xlsx|names"
                 r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso"
@@ -132,3 +155,54 @@ def tokenize_text(text):
     raw = re.findall(r'\w+', text)
     tokens = [token.lower() for token in raw]
     return tokens
+
+
+# SimHash implementation
+def hash_token(token):
+    hash_object = hashlib.sha1(token.encode('utf-8'))
+    digest = hash_object.digest()
+    # Use first 8 bytes to get 64 bits
+    return int.from_bytes(digest[:8], byteorder='big')
+
+
+def simhash(tokens, hashbits=64):
+    v = [0] * hashbits
+
+    for token in tokens:
+        h = hash_token(token)
+        for i in range(hashbits):
+            bitmask = 1 << i
+            if h & bitmask:
+                v[i] += 1
+            else:
+                v[i] -= 1
+
+    fingerprint = 0
+    for i in range(hashbits):
+        if v[i] > 0:
+            fingerprint |= 1 << i
+        # If v[i] == 0, bit stays 0
+    return fingerprint
+
+
+def hamming_distance(x, y):
+    return bin(x ^ y).count('1')
+
+
+def is_similar_content(soup, threshold=3):
+    text = soup.get_text()
+    tokens = text.split()
+
+    # Optional preprocessing: lowercase, remove punctuation, etc.
+    tokens = [token.lower() for token in tokens if token.isalpha()]
+
+    sim_hash = simhash(tokens)
+
+    for existing_simhash in visited_simhashes:
+        distance = hamming_distance(sim_hash, existing_simhash)
+        if distance <= threshold:
+            return True  # Near-duplicate page found
+
+    # No near-duplicate found; add the simhash to the list
+    visited_simhashes.append(sim_hash)
+    return False
