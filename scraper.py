@@ -101,7 +101,6 @@ def extract_next_links(url, resp):
 
         # Update the max word count and URL if necessary
         word_count = len(tokens)
-        print(word_count)
         if word_count > max_word_count:
             max_word_count = word_count
             longest_page_url = url

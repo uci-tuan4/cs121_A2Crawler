@@ -17,16 +17,6 @@ def main(config_file, restart):
     crawler.start()
 
 
-def print_top_50_frequencies(freqs):
-    sorted_frequencies = sorted(
-        freqs.items(),
-        key=lambda x: (-x[1], x[0])
-    )
-    print("Top 50 most common words:")
-    for word, freq in sorted_frequencies[:50]:
-        print(f"{word} -> {freq}")
-
-
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--restart", action="store_true", default=False)
@@ -34,10 +24,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
     main(args.config_file, args.restart)
 
-    print(f"Total unique pages found: {len(scraper.unique_urls)}")
-    print(f"The longest page is {scraper.longest_page_url} with {scraper.max_word_count} words.")
-    print_top_50_frequencies(scraper.word_frequencies)
-    sorted_subdomains = sorted(scraper.subdomain_counts.items())
-    print(f"Total subdomains found in 'ics.uci.edu': {len(sorted_subdomains)}")
-    for subdomain, count in sorted_subdomains:
-        print(f"https://{subdomain}, {count}")
