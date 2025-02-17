@@ -4,12 +4,6 @@ from urllib.parse import urlparse, urljoin, urldefrag
 from urllib import robotparser
 from bs4 import BeautifulSoup
 
-unique_urls = set()
-max_word_count = 0
-longest_page_url = ""
-word_frequencies = {}
-subdomain_counts = {}
-
 visited_simhashes = []
 
 USER_AGENT = "IR UW25 35299222"
@@ -54,15 +48,6 @@ def scraper(url, resp):
     final_url = resp.url
     final_url, _ = urldefrag(final_url)
 
-    if final_url not in unique_urls:
-        unique_urls.add(final_url)
-
-        # If the URL is in 'ics.uci.edu' domain, update subdomain counts
-        parsed = urlparse(final_url)
-        if 'ics.uci.edu' in parsed.netloc:
-            subdomain = parsed.netloc.lower()
-            subdomain_counts[subdomain] = subdomain_counts.get(subdomain, 0) + 1
-
     links = extract_next_links(final_url, resp)
     return [link for link in links if is_valid(link)]
 
@@ -72,14 +57,6 @@ def extract_next_links(url, resp):
 
     # Return a list with the hyperlinks (as strings) scraped from resp.raw_response.content
     links = []
-
-    '''
-    content_length = resp.raw_response.headers.get('Content-Length')
-    MAX_CONTENT_LENGTH = 1024 * 1024 * 2  # 2 MB limit
-
-    if content_length and int(content_length) < MAX_CONTENT_LENGTH:
-        return links
-    '''
 
     if not resp.raw_response or resp.status != 200:
         return links
@@ -96,19 +73,6 @@ def extract_next_links(url, resp):
         if is_similar_content(soup):
             return links  # Skip near-duplicate pages
 
-        texts = soup.get_text()
-        tokens = tokenize_text(texts)
-
-        # Update the max word count and URL if necessary
-        word_count = len(tokens)
-        if word_count > max_word_count:
-            max_word_count = word_count
-            longest_page_url = url
-
-        for token in tokens:
-            if token not in stop_words:
-                word_frequencies[token] = word_frequencies.get(token, 0) + 1
-
         # Extract all anchor tags with href attributes
         for a_tag in soup.find_all('a', href=True):
             href = a_tag['href']
@@ -122,14 +86,6 @@ def extract_next_links(url, resp):
         return links
 
     return links
-
-
-def has_high_text_content(soup):
-    texts = soup.get_text()
-    words = texts.split()
-    num_words = len(words)
-    MIN_WORDS = 200  # Adjust this threshold as needed
-    return num_words >= MIN_WORDS
 
 
 def is_valid(url):
