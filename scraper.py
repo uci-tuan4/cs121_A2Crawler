@@ -1,6 +1,7 @@
 import re
 import hashlib
 from urllib.parse import urlparse, urljoin, urldefrag
+from urllib import robotparser
 from bs4 import BeautifulSoup
 
 unique_urls = set()
@@ -11,11 +12,45 @@ subdomain_counts = {}
 
 visited_simhashes = []
 
+USER_AGENT = "IR UW25 35299222"
+
+
+class RobotsHandler:
+    def __init__(self):
+        self.parsers = {}
+
+    def can_fetch(self, user_agent, url):
+        parsed = urlparse(url)
+        domain = parsed.netloc
+        if domain not in self.parsers:
+            self._fetch_robots(domain, parsed.scheme)
+
+        rp = self.parsers.get(domain)
+        if rp:
+            return rp.can_fetch(user_agent, url)
+        else:
+            return True  # No robots.txt means allow by default
+
+    def _fetch_robots(self, domain, scheme):
+        rp = robotparser.RobotFileParser()
+        robots_url = f"{scheme}://{domain}/robots.txt"
+        rp.set_url(robots_url)
+        try:
+            rp.read()
+            self.parsers[domain] = rp
+        except:
+            self.parsers[domain] = None
+
+
+robots_handler = RobotsHandler()
 with open('stop_words.txt', 'r') as f:
     stop_words = set(f.read().split())
 
 
 def scraper(url, resp):
+    if not robots_handler.can_fetch(USER_AGENT, url):
+        return []
+
     final_url = resp.url
     final_url, _ = urldefrag(final_url)
 
@@ -113,7 +148,14 @@ def is_valid(url):
             "stat.uci.edu"
         )
 
-        if not any(parsed.netloc.endswith(domain) for domain in allowed_domains):
+        allowed_domains_suffix = (
+            ".ics.uci.edu",
+            ".cs.uci.edu",
+            ".informatics.uci.edu",
+            ".stat.uci.edu"
+        )
+
+        if not any(parsed.netloc == domain for domain in allowed_domains) and not any(parsed.netloc.endswith(domain_suffix) for domain_suffix in allowed_domains_suffix):
             return False
 
         # Skips individual commits in gitlab.ics.uci.edu
@@ -139,8 +181,8 @@ def is_valid(url):
                 r"|wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf"
                 r"|ps|eps|tex|ppt|pptx|doc|docx|xls|xlsx|names"
                 r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso"
-                r"|epub|dll|cnf|tgz|sha1"
-                r"|thmx|mso|arff|rtf|jar|csv"
+                r"|epub|dll|cnf|tgz|sha1|git|ppsx"
+                r"|thmx|mso|arff|rtf|jar|csv|java"
                 r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower()):
             return False
 
@@ -193,7 +235,6 @@ def is_similar_content(soup, threshold=3):
     text = soup.get_text()
     tokens = text.split()
 
-    # Optional preprocessing: lowercase, remove punctuation, etc.
     tokens = [token.lower() for token in tokens if token.isalpha()]
 
     sim_hash = simhash(tokens)
