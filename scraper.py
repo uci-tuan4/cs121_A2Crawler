@@ -113,10 +113,6 @@ def is_valid(url):
         if not any(parsed.netloc == domain for domain in allowed_domains) and not any(parsed.netloc.endswith(domain_suffix) for domain_suffix in allowed_domains_suffix):
             return False
 
-        # Skips individual commits in gitlab.ics.uci.edu
-        if '/commit/' in parsed.path or '/commits/' in parsed.path or '/tree/' in parsed.path:
-            return False
-
         # Check for infinite traps in query parameters (e.g., session IDs, calendars)
         trap_patterns = [
             r'(.+/)+.*(\1)+.*',  # Repeated directories
